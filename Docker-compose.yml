@@ -1,0 +1,89 @@
+version: '3.8'
+
+services:
+  # Хранилище данных (TimescaleDB)
+  timescaledb:
+    image: timescale/timescaledb:latest-pg15
+    container_name: diplom_timescaledb
+    environment:
+      POSTGRES_DB: dwh
+      POSTGRES_USER: dwh_user
+      POSTGRES_PASSWORD: dwh_pass
+    ports:
+      - "5433:5432"
+    volumes:
+      - timescale_data:/var/lib/postgresql/data
+      - ./sql/init.sql:/docker-entrypoint-initdb.d/init.sql
+    restart: unless-stopped
+
+  # PostgreSQL для Airflow и Superset (метаданные)
+  postgres_meta:
+    image: postgres:15
+    container_name: diplom_meta_db
+    environment:
+      POSTGRES_DB: meta
+      POSTGRES_USER: meta_user
+      POSTGRES_PASSWORD: meta_pass
+    ports:
+      - "5432:5432"
+    volumes:
+      - meta_data:/var/lib/postgresql/data
+    restart: unless-stopped
+
+  # Airflow
+  airflow:
+    image: apache/airflow:2.8.1
+    container_name: diplom_airflow
+    depends_on:
+      - postgres_meta
+    environment:
+      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://meta_user:meta_pass@postgres_meta/meta
+      AIRFLOW__CORE__EXECUTOR: LocalExecutor
+      AIRFLOW__WEBSERVER__RBAC: 'True'
+      AIRFLOW__WEBSERVER__DEFAULT_UI_TIMEZONE: 'Europe/Minsk'
+    volumes:
+      - ./dags:/opt/airflow/dags
+      - ./logs:/opt/airflow/logs
+      - ./data:/opt/airflow/data
+    ports:
+      - "8080:8080"
+    command: standalone
+    restart: unless-stopped
+
+  # Superset
+  superset:
+    image: apache/superset:latest
+    container_name: diplom_superset
+    depends_on:
+      - postgres_meta
+    environment:
+      SUPERSET__SQLALCHEMY_DATABASE_URI: postgresql://meta_user:meta_pass@postgres_meta/superset
+    ports:
+      - "8088:8088"
+    volumes:
+      - ./superset:/app/superset_home
+    command: >
+      sh -c "superset db upgrade &&
+             superset init &&
+             superset run -p 8088 --with-threads --reload --debugger"
+    restart: unless-stopped
+
+    # мини сервис на питоне (Для понтов)
+  streamlit:
+    build: ./streamlit_app
+    container_name: diplom_streamlit
+    ports:
+      - "8501:8501"
+    depends_on:
+      - timescaledb
+    environment:
+      DB_HOST: timescaledb
+      DB_PORT: 5432
+      DB_NAME: dwh
+      DB_USER: dwh_user
+      DB_PASS: dwh_pass
+    restart: unless-stopped
+
+volumes:
+  timescale_data:
+  meta_data:
