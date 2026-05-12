@@ -1,4 +1,3 @@
-
 services:
   # Хранилище данных (TimescaleDB)
   timescaledb:
@@ -57,8 +56,9 @@ services:
       - postgres_meta
     environment:
       SUPERSET__SQLALCHEMY_DATABASE_URI: postgresql://meta_user:meta_pass@postgres_meta/superset
+      SUPERSET_SECRET_KEY: 'your-secret-key-12345-change-me'   # ← ДОБАВИТЬ ЭТУ СТРОКУ
     ports:
-      - "8088:8088"
+      - "8089:8088"
     volumes:
       - ./superset:/app/superset_home
     command: >
@@ -67,7 +67,7 @@ services:
              superset run -p 8088 --with-threads --reload --debugger"
     restart: unless-stopped
 
-    # мини сервис на питоне (Для понтов)
+  # мини сервис на питоне (Для понтов)
   streamlit:
     build: ./streamlit_app
     container_name: diplom_streamlit
@@ -81,6 +81,8 @@ services:
       DB_NAME: dwh
       DB_USER: dwh_user
       DB_PASS: dwh_pass
+    volumes:
+      - ./streamlit_app:/app
     restart: unless-stopped
 
 volumes:
