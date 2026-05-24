@@ -1,13 +1,8 @@
 import streamlit as st
 import pandas as pd
 import plotly.express as px
-import plotly.graph_objects as go
-from datetime import datetime, timedelta
 import numpy as np
 
-# ============================================
-# НАСТРОЙКА СТРАНИЦЫ
-# ============================================
 st.set_page_config(
     page_title="ИАС - Контроль тарификации",
     page_icon="📊",
@@ -15,12 +10,8 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# ============================================
-# ЗАГРУЗКА ТЕСТОВЫХ ДАННЫХ (ЗАГЛУШКА)
-# ============================================
 @st.cache_data(ttl=3600)
 def load_contract_data(period):
-    """Загрузка данных по договорам (заглушка)"""
     np.random.seed(42)
     
     contracts = [
@@ -72,10 +63,8 @@ def load_contract_data(period):
     
     return pd.DataFrame(data)
 
-
 @st.cache_data(ttl=3600)
 def load_profitability_data():
-    """Загрузка данных по доходности (заглушка)"""
     np.random.seed(42)
     
     clients = [
@@ -104,18 +93,35 @@ def load_profitability_data():
     
     return pd.DataFrame(data)
 
-
 @st.cache_data(ttl=3600)
 def load_excess_trend():
-    """Загрузка данных для тренда превышений"""
     months = ["Окт 2025", "Ноя 2025", "Дек 2025", "Янв 2026", "Фев 2026", "Мар 2026"]
     excess_hours = [45, 62, 38, 55, 70, 48]
     return pd.DataFrame({"month": months, "excess_hours": excess_hours})
 
+@st.cache_data(ttl=3600)
+def load_rate_recommendation():
+    data = [
+        {"contract_number": "Д001-АО", "total_hours": 120, "total_cost": 4800, "current_rate": 70, "subscription_fee": 500, "hour_limit": 5},
+        {"contract_number": "Д002-АО", "total_hours": 80, "total_cost": 3200, "current_rate": 55, "subscription_fee": 300, "hour_limit": 5},
+        {"contract_number": "Д003-АО", "total_hours": 60, "total_cost": 2400, "current_rate": 45, "subscription_fee": 200, "hour_limit": 5},
+        {"contract_number": "Д004-АО", "total_hours": 200, "total_cost": 10000, "current_rate": 60, "subscription_fee": 800, "hour_limit": 10},
+        {"contract_number": "Д005-АО", "total_hours": 40, "total_cost": 1800, "current_rate": 50, "subscription_fee": 400, "hour_limit": 5},
+    ]
+    return pd.DataFrame(data)
 
-# ============================================
-# БОКОВАЯ ПАНЕЛЬ (НАВИГАЦИЯ)
-# ============================================
+def calculate_recommended_rate(total_cost, total_hours, target_margin):
+    if total_hours > 0:
+        return total_cost / (total_hours * (1 - target_margin))
+    return 0
+
+def calculate_recommended_rate_excess(total_cost, total_hours, subscription_fee, hour_limit, target_margin):
+    excess_hours = max(0, total_hours - hour_limit)
+    if excess_hours > 0:
+        required_revenue = total_cost / (1 - target_margin)
+        return (required_revenue - subscription_fee) / excess_hours
+    return 0
+
 with st.sidebar:
     st.title("📊 ИАС")
     st.markdown("### Контроль тарификации")
@@ -123,18 +129,18 @@ with st.sidebar:
     
     page = st.radio(
         "Навигация",
-        ["📋 Контроль лимитов", "💰 Анализ доходности"],
+        ["📋 Контроль лимитов", "💰 Анализ доходности", "🎯 Рекомендация ставки"],
         index=0
     )
+    
+    if st.button("🔄 Очистить кэш данных"):
+        st.cache_data.clear()
+        st.rerun()
     
     st.divider()
     st.caption("Информационно-аналитическая система")
     st.caption("v1.0 | Учёт и контроль тарификации")
 
-
-# ============================================
-# СТРАНИЦА 1: КОНТРОЛЬ ЛИМИТОВ
-# ============================================
 if page == "📋 Контроль лимитов":
     st.title("📋 Контроль лимитов по договорам")
     st.caption("Оперативный контроль соблюдения договорных лимитов часов")
@@ -160,12 +166,15 @@ if page == "📋 Контроль лимитов":
     
     with kpi1:
         st.metric("Всего договоров", len(df_filtered))
+    
     with kpi2:
         total_excess = df_filtered["excess_amount"].sum()
         st.metric("Сумма доплаты", f"{total_excess:,.0f} BYN")
+    
     with kpi3:
         avg_hours = df_filtered["actual_hours"].mean()
         st.metric("Средние часы на договор", f"{avg_hours:.1f}")
+    
     with kpi4:
         exceed_count = df_filtered["limit_exceeded"].sum()
         st.metric("Договоров с превышением", exceed_count)
@@ -194,9 +203,7 @@ if page == "📋 Контроль лимитов":
     styled_df = display_df.style.apply(highlight_exceed, axis=1)
     st.dataframe(styled_df, use_container_width=True, height=400)
     
-    # Блок уведомлений
     st.markdown("### 📧 Уведомление о превышениях")
-    
     exceed_df = df[df["limit_exceeded"] == True].copy()
     
     col_alert1, col_alert2 = st.columns([2, 1])
@@ -265,11 +272,7 @@ if page == "📋 Контроль лимитов":
         if st.button("📎 Экспорт в Excel", use_container_width=True):
             st.success("✅ Отчёт экспортирован (demo)")
 
-
-# ============================================
-# СТРАНИЦА 2: АНАЛИЗ ДОХОДНОСТИ
-# ============================================
-else:
+elif page == "💰 Анализ доходности":
     st.title("💰 Анализ доходности клиентов")
     st.caption("Оценка рентабельности и ранжирование клиентов")
     
@@ -277,7 +280,7 @@ else:
     with col_f1:
         period = st.selectbox(
             "📅 Отчётный период",
-            ["Март 2026", "Февраль 2026"],
+            ["Март 2026", "Февраль 2026", "Январь 2026"],
             index=0
         )
     with col_f2:
@@ -365,5 +368,81 @@ else:
     
     styled_summary = summary_df.style.apply(highlight_loss, axis=1)
     st.dataframe(styled_summary, use_container_width=True, height=400)
-    
     st.caption("💰 Красным выделены клиенты с отрицательной рентабельностью")
+
+elif page == "🎯 Рекомендация ставки":
+    st.title("🎯 Рекомендация часовой ставки")
+    st.caption("Расчёт экономически обоснованной ставки на основе исторических данных (формулы 1.5 и 1.6)")
+    
+    df_rate = load_rate_recommendation()
+    
+    col_sel1, col_sel2 = st.columns([1, 1])
+    with col_sel1:
+        selected_contract = st.selectbox(
+            "Выберите договор",
+            df_rate["contract_number"].tolist()
+        )
+    with col_sel2:
+        target_margin = st.slider(
+            "Целевая рентабельность (%)",
+            min_value=10, max_value=50, value=30, step=5
+        ) / 100
+    
+    if selected_contract:
+        contract_data = df_rate[df_rate["contract_number"] == selected_contract].iloc[0]
+        total_hours = contract_data["total_hours"]
+        total_cost = contract_data["total_cost"]
+        current_rate = contract_data["current_rate"]
+        subscription_fee = contract_data["subscription_fee"]
+        hour_limit = contract_data["hour_limit"]
+        
+        excess_hours = max(0, total_hours - hour_limit)
+        
+        recommended_rate = calculate_recommended_rate(total_cost, total_hours, target_margin)
+        recommended_rate_excess = calculate_recommended_rate_excess(total_cost, total_hours, subscription_fee, hour_limit, target_margin)
+        
+        st.markdown("### 📊 Общая рекомендуемая ставка (на все часы)")
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            st.metric("Текущая ставка", f"{current_rate:.2f} BYN/ч")
+        with col2:
+            st.metric("Рекомендуемая ставка (общая)", f"{recommended_rate:.2f} BYN/ч")
+        with col3:
+            delta = recommended_rate - current_rate
+            st.metric("Изменение", f"{delta:+.2f} BYN/ч", delta_color="normal" if delta >= 0 else "inverse")
+        
+        with st.expander("📐 Формула расчёта (1.5)"):
+            st.latex(r"R_{rec} = \frac{S_{total}}{H_{bill} \cdot (1 - R_{target})}")
+            st.markdown(f"**Подстановка:** {total_cost:.0f} / ({total_hours:.0f} × (1 - {target_margin:.2f})) = {recommended_rate:.2f}")
+        
+        st.markdown("---")
+        st.markdown("### 📊 Расчёт для сверхлимитных часов (абонентская модель)")
+        
+        col4, col5, col6 = st.columns(3)
+        with col4:
+            st.metric("Абонентская плата", f"{subscription_fee:.2f} BYN/мес")
+        with col5:
+            st.metric("Лимит часов", f"{hour_limit} ч/мес")
+        with col6:
+            st.metric("Сверхлимитные часы", f"{excess_hours} ч")
+        
+        if excess_hours > 0:
+            st.metric("Рекомендуемая ставка (сверхлимит)", f"{recommended_rate_excess:.2f} BYN/ч")
+            delta_excess = recommended_rate_excess - current_rate
+            if delta_excess > 0:
+                st.warning(f"⚠️ Для достижения целевой рентабельности {target_margin*100:.0f}% сверхлимитную ставку рекомендуется повысить с {current_rate:.2f} до {recommended_rate_excess:.2f} BYN/ч (+{delta_excess:.2f} BYN/ч).")
+            elif delta_excess < 0:
+                st.success(f"✅ Текущая сверхлимитная ставка обеспечивает рентабельность выше {target_margin*100:.0f}%. Можно рассмотреть её снижение на {abs(delta_excess):.2f} BYN/ч.")
+            else:
+                st.info("Текущая ставка оптимальна.")
+            
+            with st.expander("📐 Формула расчёта для сверхлимитных часов (1.6)"):
+                st.latex(r"R_{rec}^{excess} = \frac{ \frac{S_{total}}{1 - R_{target}} - A }{ \max(0, H_{bill} - L) }")
+                st.markdown(f"**Подстановка:** ({total_cost:.0f} / (1 - {target_margin:.2f}) - {subscription_fee:.0f}) / {excess_hours} = {recommended_rate_excess:.2f}")
+        else:
+            st.info("Сверхлимитные часы отсутствуют (фактические часы не превышают лимит). Расчёт для сверхлимитной части не производится.")
+        
+        if st.button("📎 Экспорт результатов в Excel", use_container_width=True):
+            st.success("✅ Результат экспортирован (demo)")
+    
+    st.caption("Расчёт выполнен на основе агрегированных данных за последние 12 месяцев.")

@@ -49,23 +49,23 @@ services:
     restart: unless-stopped
 
   # Superset
-  superset:
-    image: apache/superset:latest
-    container_name: diplom_superset
-    depends_on:
-      - postgres_meta
-    environment:
-      SUPERSET__SQLALCHEMY_DATABASE_URI: postgresql://meta_user:meta_pass@postgres_meta/superset
-      SUPERSET_SECRET_KEY: 'your-secret-key-12345-change-me'   # ← ДОБАВИТЬ ЭТУ СТРОКУ
-    ports:
-      - "8089:8088"
-    volumes:
-      - ./superset:/app/superset_home
-    command: >
-      sh -c "superset db upgrade &&
-             superset init &&
-             superset run -p 8088 --with-threads --reload --debugger"
-    restart: unless-stopped
+  # superset:
+  #   image: apache/superset:latest
+  #   container_name: diplom_superset
+  #   depends_on:
+  #     - postgres_meta
+  #   environment:
+  #     SUPERSET__SQLALCHEMY_DATABASE_URI: postgresql://meta_user:meta_pass@postgres_meta/superset
+  #     SUPERSET_SECRET_KEY: 'your-secret-key-12345-change-me'   # ← ДОБАВИТЬ ЭТУ СТРОКУ
+  #   ports:
+  #     - "8089:8088"
+  #   volumes:
+  #     - ./superset:/app/superset_home
+  #   command: >
+  #     sh -c "superset db upgrade &&
+  #            superset init &&
+  #            superset run -p 8088 --with-threads --reload --debugger"
+  #   restart: unless-stopped
 
   # мини сервис на питоне (Для понтов)
   streamlit:
